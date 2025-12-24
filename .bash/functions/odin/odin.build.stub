@@ -1,0 +1,4 @@
+NAME=my-project
+ENTRY=main.odin
+OUTPUT_DIR=build
+ASSET_DIR=assets
