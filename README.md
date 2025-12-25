@@ -8,4 +8,4 @@
 ### notes
 
 configured to work with
-symlink ```piakru-bash/.bash``` to ```~/.bash```
+symlink ```pikaru-bash/.bash``` to ```~/.bash```
