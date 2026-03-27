@@ -7,6 +7,11 @@ _git_is_git_repo () {
 	return 0
 }
 
+_git_root () {
+    git_root=$(git rev-parse --show-toplevel)
+	echo "$git_root"
+}
+
 _git_current_branch () {
 	_git_is_git_repo || return 1
 
@@ -147,6 +152,7 @@ _git_commit() {
 
 _git_review() {
     _git_is_git_repo || return 1
+    local git_root=$(_git_root)
 
     if ! git rev-parse --verify @{u} >/dev/null 2>&1; then
         echo "Error: No upstream branch configured. Cannot perform explicit remote review."
@@ -160,8 +166,8 @@ _git_review() {
             --expect=ctrl-s,ctrl-d,ctrl-e \
             --preview="if git ls-files --error-unmatch {} >/dev/null 2>&1; then 
                           git diff @{u}...HEAD --color=always -- {}
-                        else 
-                          bat --color=always --style=numbers {} 2>/dev/null || cat {}
+                        else
+                          bat --color=always --style=numbers $(_git_root)/{} 2>/dev/null || cat $(_git_root)/{}
                         fi" \
             --preview-window='right:60%:wrap')
 
@@ -178,17 +184,16 @@ _git_review() {
                 [[ -n "$file" ]] && git add ":/$file"
                 ;;
             ctrl-e)
-                git_root=$(git rev-parse --show-toplevel)
                 [[ -n "$file" ]] && ${EDITOR:-micro} "$gitroot/$file"
                 ;;
             ctrl-d)
                 [[ -z "$file" ]] && continue
-                if git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+                if git ls-files --error-unmatch ":/$file" >/dev/null 2>&1; then
                     read -p "Discard changes in $file? (y/n): " confirm
-                    [[ $confirm == [yY] ]] && git checkout -- "$file"
+                    [[ $confirm == [yY] ]] && git checkout -- ":/$file"
                 else
                     read -p "Delete untracked file $file? (y/n): " confirm
-                    [[ $confirm == [yY] ]] && rm "$file"
+                    [[ $confirm == [yY] ]] && rm "$gitroot/$file"
                 fi
                 ;;
         esac
