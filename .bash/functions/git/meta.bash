@@ -164,18 +164,22 @@ _git_review() {
                           bat --color=always --style=numbers {} 2>/dev/null || cat {}
                         fi" \
             --preview-window='right:60%:wrap')
-        
-        key=$(head -1 <<< "$out")
-        file=$(tail -1 <<< "$out")
+
+        [[ -z "$out" ]] && break
+
+        mapfile -t out_array <<< "$out"
+        key="${out_array[0]}"
+        file="${out_array[1]}"
 
         [[ -z "$key" ]] && break
 
         case "$key" in
             ctrl-s)
-                [[ -n "$file" ]] && git add "$file"
+                [[ -n "$file" ]] && git add ":/$file"
                 ;;
             ctrl-e)
-                [[ -n "$file" ]] && ${EDITOR:-micro} "$file"
+                git_root=$(git rev-parse --show-toplevel)
+                [[ -n "$file" ]] && ${EDITOR:-micro} "$gitroot/$file"
                 ;;
             ctrl-d)
                 [[ -z "$file" ]] && continue

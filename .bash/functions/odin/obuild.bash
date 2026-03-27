@@ -1,7 +1,17 @@
-obuild() {
-    local CONF_FILE="odin.build"
+_check_tool() {
+    if ! command -v "$1" &> /dev/null; then
+        echo "Error: Required tool '$1' is not installed or not in PATH."
+        return 1
+    fi
+}
 
+obuild() {
+    _check_tool "odin" || return 1
+    _check_tool "date" || return 1
+
+    local CONF_FILE="odin.build"
     if [ ! -f "$CONF_FILE" ]; then
+        echo "Error: $CONF_FILE not found."
         return 1
     fi
 
@@ -10,72 +20,36 @@ obuild() {
     local OUTPUT_ROOT=$(grep "OUTPUT_DIR=" "$CONF_FILE" | cut -d'=' -f2)
     local ASSET_SRC=$(grep "ASSET_DIR=" "$CONF_FILE" | cut -d'=' -f2)
 
+    local HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    local HOST_ARCH=$(uname -m)
     local TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    local BATCH_DIR="$OUTPUT_ROOT/build-$TIMESTAMP"
-    local LATEST_LINK="$OUTPUT_ROOT/latest"
     
-    local TARGETS=("linux_amd64" "windows_amd64" "darwin_amd64" "darwin_arm64") 
+    local BATCH_DIR="$OUTPUT_ROOT/build-$TIMESTAMP"
+    local T_DIR="$BATCH_DIR/${HOST_OS}_${HOST_ARCH}"
+    local LATEST_LINK="$OUTPUT_ROOT/latest"
 
-    for T_STR in "${TARGETS[@]}"; do
-        local T_OS=$(echo "$T_STR" | cut -d'_' -f1)
-        local T_ARCH=$(echo "$T_STR" | cut -d'_' -f2)
-        local T_DIR="$BATCH_DIR/${T_OS}_${T_ARCH}"
-        
-        echo "--- Building Target: $T_STR ---"
+    mkdir -p "$T_DIR"
+    
+    local BIN_PATH="$T_DIR/$NAME"
+    [[ "$HOST_OS" == *"mingw"* || "$HOST_OS" == *"msys"* ]] && BIN_PATH+=".exe"
 
-		case $T_OS in
-            "windows")
-                local BIN_PATH="$T_DIR/$NAME.exe"
-                mkdir -p "$T_DIR"
+    echo "--- Building for Host: $HOST_OS ($HOST_ARCH) ---"
 
-                # -linker-path: points to ld.lld
-                # -subsystem:console: ensures a terminal opens (standard for C-alternatives)
-                odin build "$ENTRY" -file \
-                    -out:"$BIN_PATH" \
-                    -target:"$T_STR" \
-                    -linker-path:$(which ld.lld) \
-                    -subsystem:console
-
-                if [ -d "$ASSET_SRC" ]; then cp -ru "$ASSET_SRC/." "$T_DIR/"; fi
-                ;;
-
-            "darwin")
-                local APP_DIR="$T_DIR/$NAME.app/Contents"
-                local BIN_DIR="$APP_DIR/MacOS"
-                local RES_DIR="$APP_DIR/Resources"
-                mkdir -p "$BIN_DIR" "$RES_DIR"
-
-                # macOS cross-linking often requires the ld64.lld flavor
-                odin build "$ENTRY" -file \
-                    -out:"$BIN_DIR/$NAME" \
-                    -target:"$T_STR" \
-                    -linker-path:$(which ld64.lld)
-
-                if [ -d "$ASSET_SRC" ]; then cp -ru "$ASSET_SRC/." "$RES_DIR/"; fi
-                ;;
-
-            "linux")
-                local BIN_PATH="$T_DIR/$NAME"
-                mkdir -p "$T_DIR"
-                
-                odin build "$ENTRY" -file -out:"$BIN_PATH" -target:"$T_STR"
-                
-                if [ -d "$ASSET_SRC" ]; then cp -ru "$ASSET_SRC/." "$T_DIR/"; fi
-                ;;
-        esac
-
-        if [ $? -ne 0 ]; then
-            echo "Error: Failed build for $T_STR"
-            return 1
-        fi
-    done
-
-    if [ -L "$LATEST_LINK" ] || [ -e "$LATEST_LINK" ]; then
-        rm -rf "$LATEST_LINK"
+    odin build "$ENTRY" -file -out:"$BIN_PATH"
+    
+    if [ $? -ne 0 ]; then
+        echo "Build failed."
+        return 1
     fi
 
+    if [ -d "$ASSET_SRC" ]; then
+        echo "Copying assets..."
+        cp -ru "$ASSET_SRC/." "$T_DIR/"
+    fi
+
+    [ -L "$LATEST_LINK" ] || [ -e "$LATEST_LINK" ] && rm -rf "$LATEST_LINK"
     ln -s "build-$TIMESTAMP" "$LATEST_LINK"
 
     echo "--------------------------------"
-    echo "Batch build complete: $BATCH_DIR"
+    echo "Build complete: $T_DIR"
 }
